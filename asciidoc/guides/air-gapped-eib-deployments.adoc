@@ -452,3 +452,72 @@ kube-system   job.batch/helm-install-rke2-snapshot-validation-webhook   1/1     
 And when we go to `https://192.168.100.50.sslip.io` and log in with the `adminadminadmin` password that we set earlier, we are greeted with the Rancher dashboard:
 
 image::air-gapped-rancher.png[]
+
+== NeuVector Installation Using Edge Image Builder
+
+Unlike the Rancher installation, the NeuVector installation does not require any special handling in EIB. EIB will automatically air-gap every image required by NeuVector.
+
+The NeuVector EIB Definition looks like:
+[,console]
+----
+apiVersion: 1.0
+image:
+  imageType: iso
+  arch: x86_64
+  baseImage: slemicro.iso
+  outputImageName: eib-image.iso
+operatingSystem:
+  users:
+    - username: root
+      encryptedPassword: $6$jHugJNNd3HElGsUZ$eodjVe4te5ps44SVcWshdfWizrP.xAyd71CVEXazBJ/.v799/WRCBXxfYmunlBO2yp1hm/zb4r8EmnrrNCF.P/
+kubernetes:
+  version: v1.28.8+rke2r1
+  network:
+    apiVIP: 192.168.100.151
+  helm:
+    charts:
+      - name: neuvector-crd
+        version: 103.0.3+up2.7.6
+        repositoryName: rancher-charts
+        targetNamespace: neuvector
+        createNamespace: true
+        installationNamespace: kube-system
+        valuesFile: neuvector-values.yaml
+      - name: neuvector
+        version: 103.0.3+up2.7.6
+        repositoryName: rancher-charts
+        targetNamespace: neuvector
+        createNamespace: true
+        installationNamespace: kube-system
+        valuesFile: neuvector-values.yaml
+    repositories:
+      - name: rancher-charts
+        url: https://charts.rancher.io/
+----
+
+We will also create a SUSE Edge optimizied Helm values file for NeuVector:
+[,shell]
+----
+cat << EOF > $CONFIG_DIR/kubernetes/helm/values/neuvector-values.yaml
+controller:
+  replicas: 1
+manager:
+  enabled: false
+cve:
+  scanner:
+    enabled: false
+    replicas: 1
+k3s:
+  enabled: true
+crdwebhook:
+  enabled: false
+EOF
+----
+
+To build the image:
+[,shell]
+----
+podman run --rm -it --privileged -v $CONFIG_DIR:/eib \
+registry.suse.com/edge/edge-image-builder:1.0.1 \
+build --definition-file eib-iso-definition.yaml
+----
